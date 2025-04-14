@@ -13,16 +13,16 @@ class GIN(torch.nn.Module):
         
         # further Layers ...
         
-        # Output Layer, auf Outpu-Dimension reduziert
+        # Output Layer, auf Output-Dimension reduziert
         self.out = Linear(dim_hidden,dim_out)
         
     def forward(self, feat, edge, batch):
         
-        feat = self.conv1(feat, edge) #feat durch GINConv-Layer, Verarebitugn plus Nachbarinformation
+        feat = self.conv1(feat, edge) #feat durch GINConv-Layer, Verarbeitung plus Nachbarinformation
         
         # further Layers
         
-        feat = F.relu(feat) #nichjtlineare Aktivierung
+        feat = F.relu(feat) #nichtlineare Aktivierung
         
         # Aggregieren zu Graph-Embedding (weitere Funktionen)
         graph = global_mean_pool(feat, batch)
