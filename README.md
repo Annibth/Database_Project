@@ -25,10 +25,10 @@ make
 # create database 
 psql postgres 
 CREATE DATABASE tpch;
-\c tcph
+\c tpch
 
 # load in the scheme for database 
-psql tcph < data/tpch-schema.sql
+psql tpch < data/tpch-schema.sql
 ```
 To load the generated data inside the database tables you can use the predefinesd loading script. 
 
