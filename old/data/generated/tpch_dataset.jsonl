@@ -1,0 +1,345 @@
+{
+  "original_query": "-- Query 1: 3-way join\n\nSELECT *\nFROM customer\nJOIN orders ON customer.c_custkey = orders.o_custkey\nJOIN lineitem ON orders.o_orderkey = lineitem.l_orderkey;",
+  "tables": [
+    "customer",
+    "orders",
+    "lineitem"
+  ],
+  "postgres_default_plan": {
+    "execution_time_ms": 6657.968,
+    "parsed_graph": {
+      "nodes": [
+        {
+          "id": 0,
+          "node_type": "Hash Join",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": "Inner",
+          "est_startup_cost": 199239.0,
+          "est_total_cost": 744817.27,
+          "est_rows": 6000771,
+          "est_width": 396,
+          "actual_startup_time": 1557.302,
+          "actual_total_time": 6548.65,
+          "actual_rows": 6001215,
+          "actual_loops": 1,
+          "shared_hit_blocks": 4922,
+          "shared_read_blocks": 144202
+        },
+        {
+          "id": 1,
+          "node_type": "Seq Scan",
+          "relation_name": "lineitem",
+          "alias": "lineitem",
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 0.0,
+          "est_total_cost": 178680.71,
+          "est_rows": 6000771,
+          "est_width": 128,
+          "actual_startup_time": 0.465,
+          "actual_total_time": 384.183,
+          "actual_rows": 6001215,
+          "actual_loops": 1,
+          "shared_hit_blocks": 640,
+          "shared_read_blocks": 118033
+        },
+        {
+          "id": 2,
+          "node_type": "Hash",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 126289.0,
+          "est_total_cost": 126289.0,
+          "est_rows": 1500000,
+          "est_width": 268,
+          "actual_startup_time": 1554.346,
+          "actual_total_time": 1554.349,
+          "actual_rows": 1500000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 4282,
+          "shared_read_blocks": 26169
+        },
+        {
+          "id": 3,
+          "node_type": "Hash Join",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": "Inner",
+          "est_startup_cost": 10533.0,
+          "est_total_cost": 126289.0,
+          "est_rows": 1500000,
+          "est_width": 268,
+          "actual_startup_time": 49.893,
+          "actual_total_time": 972.28,
+          "actual_rows": 1500000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 4282,
+          "shared_read_blocks": 26169
+        },
+        {
+          "id": 4,
+          "node_type": "Seq Scan",
+          "relation_name": "orders",
+          "alias": "orders",
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 0.0,
+          "est_total_cost": 41809.0,
+          "est_rows": 1500000,
+          "est_width": 107,
+          "actual_startup_time": 0.197,
+          "actual_total_time": 101.761,
+          "actual_rows": 1500000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 640,
+          "shared_read_blocks": 26169
+        },
+        {
+          "id": 5,
+          "node_type": "Hash",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 5142.0,
+          "est_total_cost": 5142.0,
+          "est_rows": 150000,
+          "est_width": 161,
+          "actual_startup_time": 49.299,
+          "actual_total_time": 49.3,
+          "actual_rows": 150000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 3642,
+          "shared_read_blocks": 0
+        },
+        {
+          "id": 6,
+          "node_type": "Seq Scan",
+          "relation_name": "customer",
+          "alias": "customer",
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 0.0,
+          "est_total_cost": 5142.0,
+          "est_rows": 150000,
+          "est_width": 161,
+          "actual_startup_time": 0.011,
+          "actual_total_time": 8.403,
+          "actual_rows": 150000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 3642,
+          "shared_read_blocks": 0
+        }
+      ],
+      "edges": [
+        {
+          "source": 1,
+          "target": 0
+        },
+        {
+          "source": 2,
+          "target": 0
+        },
+        {
+          "source": 3,
+          "target": 2
+        },
+        {
+          "source": 4,
+          "target": 3
+        },
+        {
+          "source": 5,
+          "target": 3
+        },
+        {
+          "source": 6,
+          "target": 5
+        }
+      ]
+    }
+  },
+  "optimized_left_deep_plan": {
+    "join_order": [
+      "customer",
+      "orders",
+      "lineitem"
+    ],
+    "execution_time_ms": 6363.369,
+    "parsed_graph": {
+      "nodes": [
+        {
+          "id": 0,
+          "node_type": "Hash Join",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": "Inner",
+          "est_startup_cost": 199239.0,
+          "est_total_cost": 744817.27,
+          "est_rows": 6000771,
+          "est_width": 396,
+          "actual_startup_time": 1398.082,
+          "actual_total_time": 6254.231,
+          "actual_rows": 6001215,
+          "actual_loops": 1,
+          "shared_hit_blocks": 4986,
+          "shared_read_blocks": 144138
+        },
+        {
+          "id": 1,
+          "node_type": "Seq Scan",
+          "relation_name": "lineitem",
+          "alias": "lineitem",
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 0.0,
+          "est_total_cost": 178680.71,
+          "est_rows": 6000771,
+          "est_width": 128,
+          "actual_startup_time": 0.023,
+          "actual_total_time": 293.478,
+          "actual_rows": 6001215,
+          "actual_loops": 1,
+          "shared_hit_blocks": 672,
+          "shared_read_blocks": 118001
+        },
+        {
+          "id": 2,
+          "node_type": "Hash",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 126289.0,
+          "est_total_cost": 126289.0,
+          "est_rows": 1500000,
+          "est_width": 268,
+          "actual_startup_time": 1395.868,
+          "actual_total_time": 1395.869,
+          "actual_rows": 1500000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 4314,
+          "shared_read_blocks": 26137
+        },
+        {
+          "id": 3,
+          "node_type": "Hash Join",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": "Inner",
+          "est_startup_cost": 10533.0,
+          "est_total_cost": 126289.0,
+          "est_rows": 1500000,
+          "est_width": 268,
+          "actual_startup_time": 30.046,
+          "actual_total_time": 827.816,
+          "actual_rows": 1500000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 4314,
+          "shared_read_blocks": 26137
+        },
+        {
+          "id": 4,
+          "node_type": "Seq Scan",
+          "relation_name": "orders",
+          "alias": "orders",
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 0.0,
+          "est_total_cost": 41809.0,
+          "est_rows": 1500000,
+          "est_width": 107,
+          "actual_startup_time": 0.202,
+          "actual_total_time": 87.679,
+          "actual_rows": 1500000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 672,
+          "shared_read_blocks": 26137
+        },
+        {
+          "id": 5,
+          "node_type": "Hash",
+          "relation_name": null,
+          "alias": null,
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 5142.0,
+          "est_total_cost": 5142.0,
+          "est_rows": 150000,
+          "est_width": 161,
+          "actual_startup_time": 29.594,
+          "actual_total_time": 29.595,
+          "actual_rows": 150000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 3642,
+          "shared_read_blocks": 0
+        },
+        {
+          "id": 6,
+          "node_type": "Seq Scan",
+          "relation_name": "customer",
+          "alias": "customer",
+          "group_key": null,
+          "sort_key": null,
+          "join_type": null,
+          "est_startup_cost": 0.0,
+          "est_total_cost": 5142.0,
+          "est_rows": 150000,
+          "est_width": 161,
+          "actual_startup_time": 0.002,
+          "actual_total_time": 4.426,
+          "actual_rows": 150000,
+          "actual_loops": 1,
+          "shared_hit_blocks": 3642,
+          "shared_read_blocks": 0
+        }
+      ],
+      "edges": [
+        {
+          "source": 1,
+          "target": 0
+        },
+        {
+          "source": 2,
+          "target": 0
+        },
+        {
+          "source": 3,
+          "target": 2
+        },
+        {
+          "source": 4,
+          "target": 3
+        },
+        {
+          "source": 5,
+          "target": 3
+        },
+        {
+          "source": 6,
+          "target": 5
+        }
+      ]
+    }
+  }
+}
