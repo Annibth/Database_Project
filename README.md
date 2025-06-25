@@ -9,39 +9,59 @@ On MacOS do the following steps:
 
 Verify the working installation by: ```psql postgres```
 
-### Install TPC-H dbgen tool for generating data tables
+### Download and unpack JOB-Data
 
-Clone the repository and clone it by typinh: 
-```shell
-git clone https://github.com/electrum/tpch-dbgen
-cd tpch-dbgen
+1) **Create new Directory**
+    ```shell
+    mkdir jobdata && cd jobdata
+    ```
 
-# build the dbgen binary
-make
+2) **download the data**
+    ```shell
+    curl -OL https://bonsai.cedardb.com/job/imdb.tgz
+    ```
 
-# generate data for tables 
-./dbgen -s 1 # scale factor 1 is ~1 GB
+3) **unpack it**
+    ```shell
+    tar -zxvf imdb.tgz
+    ```
+> It includes all data and the database scheme ("schematext.sql")
 
-# create database 
-psql postgres 
-CREATE DATABASE tpch;
-\c tpch
+ 
 
-# load in the scheme for database 
-psql tpch < data/tpch-schema.sql
-```
-To load the generated data inside the database tables you can use the predefinesd loading script. 
+### Create and fill JOB Movie-Database
 
-Make sure to assign executable rights to this script:
-```shell
-sudo chmod +x data/load_tpch_data.sh
-```
-Now run the script ad verify is data was transferred correctly: 
-```shell 
-# clean and load data tables
-./data/load_tpch_data.sh
+1) **start postgres**
+    ```shell
+    psql postgres
+    ```
+2) **Create database**
+    ```bash
+    CREATE DATABASE imdb;
+    ```
+3) **Connect to database**
 
-# verify successfull loading
-psql -U _username_ -d tcph
-SELECT COUNT(*) FROM lineitem;
-# you should see around 6 million rows
+    ```bash
+    \c imdb
+    ```
+
+    >**Note:** If this is not working, you may have to enable connections for this database, try: 
+    >```shell
+    >SELECT datname, datallowconn FROM pg_database;
+    >``` 
+    >If this shows "f" for your database, try:
+    >```shell
+    >UPDATE pg_database SET datallowconn = true WHERE datname = 'imdb';
+    >```
+
+4) **Import scheme**
+    ```shell
+    \i <your_path/jobdata/schematext.sql>
+    ```
+
+5) **Load with data:** 
+
+    You find a script named "loader.py" at "Database_Project/database"
+
+    - Change the path (line 4) and username (line 11), then execute
+    
