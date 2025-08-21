@@ -1,0 +1,17 @@
+{
+  "total_queries": 510,
+  "mean_join_order_accuracy": 0.1452463005404182,
+  "std_join_order_accuracy": 0.13284707942744828,
+  "mean_cost_ratio": 1242.4765548511323,
+  "std_cost_ratio": 17779.618174959618,
+  "median_cost_ratio": 0.0,
+  "confusion_statistics": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "exact_match_rate": 0.0,
+    "partial_match_rate": 1.0
+  },
+  "perfect_matches": 0,
+  "same_tables_different_order": 510
+}
