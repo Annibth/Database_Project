@@ -15,11 +15,14 @@ class QueryDataSplitter:
     Splits query data into train and test sets.
     """
     
-    def __init__(self, query_data_dir: str, train_ratio: float = 0.8, 
+    def __init__(self, query_data_dir: str,relation_nr:int, type:str, train_ratio: float = 0.8, 
                  random_seed: int = 42):
         self.query_data_dir = Path(query_data_dir)
         self.train_ratio = train_ratio
         self.random_seed = random_seed
+        self.relation_nr = relation_nr
+        self.type = type
+        self.relations = set()
         
         # Set random seed for reproducibility
         np.random.seed(random_seed)
@@ -30,16 +33,32 @@ class QueryDataSplitter:
         query_files = list(self.query_data_dir.glob("*.json"))
         
         print(f"Loading {len(query_files)} query files...")
-        
+        length = ""
         for query_file in query_files:
             try:
                 query = load_query_from_json(str(query_file))
-                queries.append(query)
+                self.relations.add(len(query.relations))
+                if self.type == "all":
+                    queries.append(query)
+                elif self.type == "exact":
+                    if len(query.relations) == self.relation_nr:
+                        queries.append(query)
+                        length = f" with {self.relation_nr} relations"
+                elif self.type == "leq":
+                    if len(query.relations) <= self.relation_nr:
+                        queries.append(query)
+                        length = f" with {self.relation_nr} or less relations "
+                elif self.type == "meq":
+                    if len(query.relations) >= self.relation_nr and self.relation_nr!= 17:
+                        queries.append(query)
+                        length = f" with {self.relation_nr} or more relations"
             except Exception as e:
                 print(f"Error loading {query_file}: {e}")
-        
-        print(f"Successfully loaded {len(queries)} queries")
+       
+        print(f"Successfully loaded {len(queries)} queries "+ length)
         return queries
+    
+    
     
     def split_queries(self, queries: List) -> Tuple[List, List]:
         """
@@ -154,6 +173,7 @@ class QueryDataSplitter:
         
         # Load actual query objects
         all_queries = self.load_all_queries()
+        #fours = self.load_query_selection(relations = 4, type = "exact")
         query_dict = {query.name: query for query in all_queries}
         
         train_queries = []

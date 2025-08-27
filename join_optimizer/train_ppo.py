@@ -35,7 +35,9 @@ class JoinOrderTrainer:
                  updates_per_query: int = 2,    # 2 updates per query (after 5 episodes)
                  eval_freq: int = 200,      # Evaluation frequency
                  save_freq: int = 1000,
-                 max_episode_length: int = 17):  # Exactly 17 steps
+                 max_episode_length: int = 17, # Exactly 17 steps
+                 relations_nr: int = 4,
+                 type: str = "less_eq"):  
         
         self.query_data_dir = Path(query_data_dir)
         self.lr = lr
@@ -54,8 +56,11 @@ class JoinOrderTrainer:
         self.save_freq = save_freq
         self.max_episode_length = max_episode_length
         
+        # NEW
+        self.relations = set()
+        
         # Calculate total episodes
-        self.train_queries, self.test_queries = self._load_splits()
+        self.train_queries, self.test_queries = self._load_splits(relations_nr,type)
         self.num_episodes = len(self.train_queries) * self.episodes_per_query
         
         print(f"Loaded {len(self.train_queries)} training queries and {len(self.test_queries)} test queries")
@@ -111,10 +116,11 @@ class JoinOrderTrainer:
         self.output_dir.mkdir(exist_ok=True)
         Path("models").mkdir(exist_ok=True)
     
-    def _load_splits(self) -> Tuple[List, List]:
+    def _load_splits(self, relations_nr, type) -> Tuple[List, List]:
         """Load train-test splits with curriculum ordering"""
-        splitter = QueryDataSplitter(self.query_data_dir)
+        splitter = QueryDataSplitter(self.query_data_dir, relations_nr,type)
         train_queries, test_queries = splitter.load_splits()
+        self.relations = splitter.relations
         
         # Sort training queries by complexity for curriculum learning
         # Complexity = number of relations + average cardinality
@@ -259,8 +265,18 @@ class JoinOrderTrainer:
               f"at episode {self.training_stats['best_episode']}")
         print("Individual plots saved to outputs/")
     
-    def create_individual_plots(self):
+    def create_individual_plots(self, rel_nr, type):
         """Create individual plots for each metric"""
+        if type == "all":
+            directory = Path(f"outputs/{type}")
+            directory.mkdir(exist_ok = True)
+            path = f"outputs/{type}"
+        else:
+            directory = Path(f"outputs/{type}")
+            directory.mkdir(exist_ok = True)
+            Path(f"outputs/{type}/{str(rel_nr)}").mkdir(exist_ok= True)
+            path = f"outputs/{type}/{str(rel_nr)}"
+        
         # 1. Episode Rewards
         plt.figure(figsize=(12, 8))
         plt.plot(self.training_stats['episode_rewards'])
@@ -269,7 +285,7 @@ class JoinOrderTrainer:
         plt.ylabel('Reward')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig(self.output_dir / "episode_rewards.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{path}/episode_rewards.png", dpi=300, bbox_inches='tight')
         plt.close()
         
         # 2. Moving Average of Rewards
@@ -286,7 +302,7 @@ class JoinOrderTrainer:
             plt.legend()
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            plt.savefig(self.output_dir / "reward_moving_average.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"{path}/reward_moving_average.png", dpi=300, bbox_inches='tight')
             plt.close()
         
         # 3. Episode Costs
@@ -297,7 +313,7 @@ class JoinOrderTrainer:
         plt.ylabel('Cost')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig(self.output_dir / "episode_costs.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{path}/episode_costs.png", dpi=300, bbox_inches='tight')
         plt.close()
         
         # 4. Episode Lengths
@@ -310,7 +326,7 @@ class JoinOrderTrainer:
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig(self.output_dir / "episode_lengths.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{path}/episode_lengths.png", dpi=300, bbox_inches='tight')
         plt.close()
         
         # 5. Evaluation Rewards
@@ -324,7 +340,7 @@ class JoinOrderTrainer:
             plt.ylabel('Evaluation Reward')
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            plt.savefig(self.output_dir / "evaluation_rewards.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"{path}/evaluation_rewards.png", dpi=300, bbox_inches='tight')
             plt.close()
         
         # 6. Query Performance Analysis
@@ -337,7 +353,7 @@ class JoinOrderTrainer:
             plt.ylabel('Improvement (Final - Initial Reward)')
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            plt.savefig(self.output_dir / "query_improvements.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"{path}/query_improvements.png", dpi=300, bbox_inches='tight')
             plt.close()
         
         # Plot update statistics if available
@@ -355,7 +371,7 @@ class JoinOrderTrainer:
             plt.ylabel('Policy Loss')
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            plt.savefig('outputs/policy_loss.png', dpi=300, bbox_inches='tight')
+            plt.savefig(f"{path}/policy_loss.png", dpi=300, bbox_inches='tight')
             plt.close()
             
             # Value Loss
@@ -366,7 +382,7 @@ class JoinOrderTrainer:
             plt.ylabel('Value Loss')
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            plt.savefig('outputs/value_loss.png', dpi=300, bbox_inches='tight')
+            plt.savefig(f"{path}/value_loss.png", dpi=300, bbox_inches='tight')
             plt.close()
             
             # KL Divergence
@@ -377,7 +393,7 @@ class JoinOrderTrainer:
             plt.ylabel('KL Divergence')
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
-            plt.savefig('outputs/kl_divergence.png', dpi=300, bbox_inches='tight')
+            plt.savefig(f"{path}/kl_divergence.png", dpi=300, bbox_inches='tight')
             plt.close()
         
         print(f"Individual plots saved to {self.output_dir}/")
@@ -435,9 +451,68 @@ class JoinOrderTrainer:
             print(f"   Improvement: {improvement:.2f} (threshold: 1.0)")
             print(f"   Consider adjusting hyperparameters for better learning")
 
+def train_splits(relation_numbers: set):
+    for num in relation_numbers:
+        # euqal, less equal und more equal
+        trainer = JoinOrderTrainer(
+            query_data_dir="query_data",
+            episodes_per_query=10,    # 10 episodes per query
+            updates_per_query=2,      # 2 updates per query (after 5 episodes)
+            buffer_size=1024,         # Standard buffer size
+            batch_size=64,            # Standard batch size
+            eval_freq=200,            # Evaluation frequency
+            save_freq=1000,
+            max_episode_length=17,
+            relations_nr = num,
+            type = "exact"
+        )
+        
+        trainer.train()
+        trainer.create_individual_plots(num, "exact")
+        trainer.analyze_performance()
+        
+        if num != 17 and num != 4:
+            trainer = JoinOrderTrainer(
+                query_data_dir="query_data",
+                episodes_per_query=10,    # 10 episodes per query
+                updates_per_query=2,      # 2 updates per query (after 5 episodes)
+                buffer_size=1024,         # Standard buffer size
+                batch_size=64,            # Standard batch size
+                eval_freq=200,            # Evaluation frequency
+                save_freq=1000,
+                max_episode_length=17,
+                relations_nr = num,
+                type = "leq"
+            )
+            
+            trainer.train()
+            trainer.create_individual_plots(num, "leq")
+            trainer.analyze_performance()
+        
+        if num != 4 and num != 17:
+            trainer = JoinOrderTrainer(
+                query_data_dir="query_data",
+                episodes_per_query=10,    # 10 episodes per query
+                updates_per_query=2,      # 2 updates per query (after 5 episodes)
+                buffer_size=1024,         # Standard buffer size
+                batch_size=64,            # Standard batch size
+                eval_freq=200,            # Evaluation frequency
+                save_freq=1000,
+                max_episode_length=17,
+                relations_nr = num,
+                type = "meq"
+            )
+            
+            trainer.train()
+            trainer.create_individual_plots(num, "meq")
+            trainer.analyze_performance()
+            
+    return
+
 
 def main():
     """Main training function"""
+    
     trainer = JoinOrderTrainer(
         query_data_dir="query_data",
         episodes_per_query=10,    # 10 episodes per query
@@ -446,12 +521,21 @@ def main():
         batch_size=64,            # Standard batch size
         eval_freq=200,            # Evaluation frequency
         save_freq=1000,
-        max_episode_length=17
+        max_episode_length=17,
+        relations_nr = 0,
+        type = "all"
     )
     
     trainer.train()
+    relation_lengths = trainer.relations
+    print(relation_lengths)
     trainer.create_individual_plots()
     trainer.analyze_performance()
+    train_splits(relation_lengths)
+    
+    
+    
+    
 
 
 if __name__ == "__main__":
