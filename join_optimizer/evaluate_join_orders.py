@@ -48,21 +48,8 @@ class JoinOrderEvaluator:
     def _load_agent(self) -> PPOAgent:
         """Load the trained PPO agent"""
         print("Loading trained agent...")
-        
-        # Initialize agent with correct dimensions for enhanced state representation
-        # New state dim: 20 + 1 + 60 + 1 + 5 + 20 = 107 features
-        agent = PPOAgent(
-            state_dim=107,  # Updated for enhanced state representation
-            action_dim=20,  # max_relations
-            lr=1e-4,
-            gamma=0.99,
-            gae_lambda=0.95,
-            clip_ratio=0.1,
-            value_loss_coef=0.5,
-            entropy_coef=0.05,
-            max_grad_norm=0.3,
-            target_kl=0.005
-        )
+        # Use the same default dims as training (state 144, action 20)
+        agent = PPOAgent(state_dim=144, action_dim=20)
         
         # Load trained weights
         agent.load(self.model_path)
@@ -72,8 +59,8 @@ class JoinOrderEvaluator:
     def _load_test_queries(self) -> List[Query]:
         """Load test queries with ground truth information"""
         print("Loading test queries...")
-        
-        splitter = QueryDataSplitter(self.query_data_dir)
+        # Default to using existing saved splits
+        splitter = QueryDataSplitter(self.query_data_dir, relation_nr=0, type="all")
         _, test_queries = splitter.load_splits()
         
         # Filter queries that have ground truth
@@ -143,9 +130,10 @@ class JoinOrderEvaluator:
         
         for relation in join_order:
             current_relations.append(relation)
-            # Find cardinality for current set
+            # Find cardinality for current set (order-insensitive)
+            joined_sorted = sorted(current_relations)
             for size_info in query.sizes:
-                if size_info["relations"] == current_relations:
+                if sorted(size_info["relations"]) == joined_sorted:
                     total_cost = size_info["cardinality"]
                     break
         
@@ -255,8 +243,8 @@ class JoinOrderEvaluator:
         if not self.results['join_order_accuracy']:
             return {}
         
-        # Filter out infinite cost ratios
-        valid_cost_ratios = [r for r in self.results['cost_ratios'] if r != float('inf')]
+        # Filter out infinite/NaN cost ratios
+        valid_cost_ratios = [r for r in self.results['cost_ratios'] if (isinstance(r, (int, float)) and np.isfinite(r))]
         
         # Calculate confusion statistics averages
         avg_confusion = {
@@ -387,9 +375,14 @@ def main():
     # Check if model exists
     model_path = "models/best_model.pt"
     if not Path(model_path).exists():
-        print(f"Error: Model file {model_path} not found!")
-        print("Please train the agent first or specify the correct model path.")
-        return
+        fallback = "models/final_model.pt"
+        if Path(fallback).exists():
+            print(f"Warning: {model_path} not found, falling back to {fallback}")
+            model_path = fallback
+        else:
+            print(f"Error: Model file {model_path} not found and no {fallback} present!")
+            print("Please train the agent first or specify the correct model path.")
+            return
     
     # Initialize evaluator
     evaluator = JoinOrderEvaluator(model_path, "query_data")

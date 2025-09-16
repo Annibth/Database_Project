@@ -22,8 +22,8 @@ class GroundTruthEvaluator:
     
     def _load_agent(self) -> PPOAgent:
         """Load the trained agent"""
-        # Initialize agent with correct dimensions (62 state, 20 action)
-        agent = PPOAgent(state_dim=62, action_dim=20)
+        # Initialize agent with training dimensions (state 144, action 20)
+        agent = PPOAgent(state_dim=144, action_dim=20)
         agent.load(self.model_path)
         return agent
     
@@ -89,7 +89,7 @@ class GroundTruthEvaluator:
         
         while not env.done and env.step_count < 17:
             action_mask = env.get_action_mask()
-            action, _, _ = self.agent.actor_critic.get_action(state, action_mask)
+            action, _, _ = self.agent.actor_critic.get_action(state, action_mask, deterministic=True)
             state, _, done, info = env.step(action)
             
             if "joined_relation" in info:

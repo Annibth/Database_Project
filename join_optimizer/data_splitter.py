@@ -15,7 +15,7 @@ class QueryDataSplitter:
     Splits query data into train and test sets.
     """
     
-    def __init__(self, query_data_dir: str,relation_nr:int, type:str, train_ratio: float = 0.8, 
+    def __init__(self, query_data_dir: str, relation_nr:int = 0, type:str = "all", train_ratio: float = 0.9, 
                  random_seed: int = 42):
         self.query_data_dir = Path(query_data_dir)
         self.train_ratio = train_ratio
@@ -54,8 +54,8 @@ class QueryDataSplitter:
                         length = f" with {self.relation_nr} or more relations"
             except Exception as e:
                 print(f"Error loading {query_file}: {e}")
-       
-        print(f"Successfully loaded {len(queries)} queries "+ length)
+        
+        print(f"Successfully loaded {len(queries)} queries " + length)
         return queries
     
     
@@ -101,7 +101,8 @@ class QueryDataSplitter:
             test_queries: Test queries
             output_dir: Directory to save splits
         """
-        output_path = Path(output_dir)
+        # Use subdirectory per selection to avoid conflicts
+        output_path = Path(output_dir) / f"{self.type}_{self.relation_nr}"
         output_path.mkdir(exist_ok=True)
         
         # Save train queries
@@ -128,7 +129,9 @@ class QueryDataSplitter:
             "random_seed": self.random_seed,
             "total_queries": len(train_queries) + len(test_queries),
             "train_count": len(train_queries),
-            "test_count": len(test_queries)
+            "test_count": len(test_queries),
+            "type": self.type,
+            "relation_nr": self.relation_nr
         }
         
         info_file = output_path / "split_info.json"
@@ -151,15 +154,34 @@ class QueryDataSplitter:
             train_queries: Training queries
             test_queries: Test queries
         """
-        split_path = Path(split_dir)
+        # Choose subdirectory based on current selection
+        split_path = Path(split_dir) / f"{self.type}_{self.relation_nr}"
+        base_path = Path(split_dir)
         
+        # If split dir doesn't exist, or mismatch in split info, create new splits
         if not split_path.exists():
-            raise FileNotFoundError(f"Split directory {split_dir} not found")
+            queries = self.load_all_queries()
+            train, test = self.split_queries(queries)
+            self.save_splits(train, test, output_dir=split_dir)
+            return train, test
         
         # Load split info
         info_file = split_path / "split_info.json"
         with open(info_file, 'r') as f:
             split_info = json.load(f)
+        
+        # If stored split info mismatches the desired config, recreate splits
+        mismatch = False
+        if abs(split_info.get("train_ratio", self.train_ratio) - self.train_ratio) > 1e-6:
+            mismatch = True
+        if split_info.get("type") != self.type or split_info.get("relation_nr") != self.relation_nr:
+            mismatch = True
+        
+        if mismatch:
+            queries = self.load_all_queries()
+            train, test = self.split_queries(queries)
+            self.save_splits(train, test, output_dir=base_path)
+            return train, test
         
         # Load train queries
         train_file = split_path / "train_queries.json"
@@ -173,7 +195,6 @@ class QueryDataSplitter:
         
         # Load actual query objects
         all_queries = self.load_all_queries()
-        #fours = self.load_query_selection(relations = 4, type = "exact")
         query_dict = {query.name: query for query in all_queries}
         
         train_queries = []
@@ -238,7 +259,7 @@ class QueryDataSplitter:
 
 def main():
     """Create and save train-test splits"""
-    splitter = QueryDataSplitter("query_data", train_ratio=0.8, random_seed=42)
+    splitter = QueryDataSplitter("query_data", relation_nr=0, type="all", train_ratio=0.9, random_seed=42)
     
     # Load all queries
     queries = splitter.load_all_queries()

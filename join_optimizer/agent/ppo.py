@@ -66,8 +66,13 @@ class ActorCritic(nn.Module):
         
         # Apply action mask if provided
         if action_mask is not None:
-            # Mask invalid actions by setting their logits to -inf
+            # Ensure mask shape matches logits
+            if action_mask.dim() == 1:
+                action_mask = action_mask.unsqueeze(0)
             masked_logits = action_logits.masked_fill(action_mask == 0, -1e9)
+            # If all actions are masked (can happen due to environment edge cases), fall back to uniform logits
+            if (action_mask.sum(dim=1) == 0).any():
+                masked_logits = action_logits
             action_probs = F.softmax(masked_logits, dim=-1)
         else:
             action_probs = F.softmax(action_logits, dim=-1)
@@ -189,24 +194,12 @@ class PPOAgent:
         self.target_kl = target_kl
         self.update_epochs = update_epochs
         
-        # Initialize actor-critic network
-        self.actor_critic = ActorCritic(state_dim, action_dim)
-        
-        # Initialize optimizer with better settings
-        self.optimizer = torch.optim.Adam(
-            self.actor_critic.parameters(), 
-            lr=lr,
-            eps=1e-5  # Better epsilon for Adam
-        )
-        
-        # Training statistics
-        self.update_count = 0
-        
-        # Networks
+        # Networks and optimizer
         self.actor_critic = ActorCritic(state_dim, action_dim)
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=lr, eps=1e-5)
         
         # Training statistics
+        self.update_count = 0
         self.training_stats = {
             'policy_loss': [],
             'value_loss': [],
@@ -215,6 +208,14 @@ class PPOAgent:
             'kl_div': [],
             'clip_fraction': []
         }
+
+    @staticmethod
+    def set_seed(seed: int = 42):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
     
     def compute_gae(self, rewards: List[float], values: List[float], 
                    dones: List[bool]) -> np.ndarray:

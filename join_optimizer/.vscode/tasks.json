@@ -1,0 +1,33 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run quick PPO smoke test",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"-u",
+				"train_ppo.py"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint-stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Install Python deps",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"-m",
+				"pip",
+				"install",
+				"-r",
+				"requirements.txt"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

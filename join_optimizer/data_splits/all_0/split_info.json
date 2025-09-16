@@ -1,0 +1,9 @@
+{
+  "train_ratio": 0.8,
+  "random_seed": 42,
+  "total_queries": 3300,
+  "train_count": 2640,
+  "test_count": 660,
+  "type": "all",
+  "relation_nr": 0
+}

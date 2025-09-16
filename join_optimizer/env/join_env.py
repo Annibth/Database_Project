@@ -6,19 +6,22 @@ from env.query_loader import Query
 
 class JoinOrderEnv:
 
-    def __init__(self, query: Query, reward_mode="cardinality", 
-                 max_relations=20, max_episode_length=17) -> None:
+    def __init__(self, query: Query, reward_mode: str = "cardinality", 
+                 max_relations: int = 20, max_episode_length: int = None,
+                 teacher_weight: float = 3.0) -> None:
         self.query = query
         self.relation_names = query.get_relation_names()
         self.num_relations = len(self.relation_names)
         self.reward_mode = reward_mode
         self.max_relations = max_relations
-        self.max_episode_length = max_episode_length
+        self.teacher_weight = teacher_weight
+        # Set episode length to actual number of relations + some buffer for exploration
+        self.max_episode_length = max_episode_length if max_episode_length else self.num_relations + 2
         
         # Build join graph for feasibility checking
         self.join_graph = self._build_join_graph()
         self.current_cardinality = 0
-        self.join_history = []
+        self.prev_cardinality = 0
         self.step_count = 0  # Track episode steps
 
         self.reset()
@@ -96,68 +99,86 @@ class JoinOrderEnv:
         self.available = set(self.relation_names)
         self.history = []
         self.current_cardinality = 0
+        self.prev_cardinality = 0
         self.done = False
         self.step_count = 0
         return self._get_state()
 
     def _get_state(self):
-        """Get current state representation with enhanced position-aware features"""
-        # Binary vector indicating which relations are joined
+        """Get current state representation focused on join order optimization"""
+        # 1. Binary vector indicating which relations are joined (padded to max_relations)
         joined_vector = np.zeros(self.max_relations, dtype=np.float32)
         for i, rel in enumerate(self.relation_names):
             if i < self.max_relations:
                 joined_vector[i] = 1.0 if rel in self.joined else 0.0
         
-        # Current cardinality (log-scaled)
-        log_cardinality = np.array([math.log(max(1, self.current_cardinality))], dtype=np.float32)
+        # 2. Current cardinality (normalized log scale)
+        if self.current_cardinality > 0:
+            max_cardinality = max(r["cardinality"] for r in self.query.relations)
+            normalized_cardinality = math.log(self.current_cardinality) / math.log(max_cardinality)
+        else:
+            normalized_cardinality = 0.0
+        cardinality_features = np.array([normalized_cardinality], dtype=np.float32)
         
-        # Enhanced table features: cardinality and connectivity for each table
-        table_features = np.zeros(self.max_relations * 3, dtype=np.float32)  # Increased to 3 features per table
+        # 3. Table features: cardinality, connectivity, and join status for each table
+        table_features = np.zeros(self.max_relations * 4, dtype=np.float32)
         for i, rel in enumerate(self.relation_names):
             if i < self.max_relations:
-                # Feature 1: Log cardinality
+                # Feature 1: Normalized cardinality of this table
                 for rel_info in self.query.relations:
                     if rel_info["name"] == rel:
-                        table_features[i * 3] = math.log(max(1, rel_info["cardinality"]))
+                        max_card = max(r["cardinality"] for r in self.query.relations)
+                        table_features[i * 4] = rel_info["cardinality"] / max_card
                         break
                 
                 # Feature 2: Connectivity (number of possible joins)
                 if rel in self.join_graph:
-                    table_features[i * 3 + 1] = len(self.join_graph[rel])
+                    table_features[i * 4 + 1] = len(self.join_graph[rel]) / self.num_relations
                 
                 # Feature 3: Join position (when this table was joined, 0 if not joined)
                 if rel in self.joined:
                     join_position = self.history.index(rel) + 1
-                    table_features[i * 3 + 2] = join_position / self.num_relations  # Normalized position
+                    table_features[i * 4 + 2] = join_position / self.num_relations
                 else:
-                    table_features[i * 3 + 2] = 0.0
+                    table_features[i * 4 + 2] = 0.0
+                
+                # Feature 4: Can this table be joined now?
+                table_features[i * 4 + 3] = 1.0 if i in self.get_legal_actions() else 0.0
         
-        # Progress indicator (normalized episode progress)
-        progress = np.array([self.step_count / self.max_episode_length], dtype=np.float32)
+        # 4. Progress features
+        progress_features = np.array([
+            len(self.joined) / self.num_relations,  # Completion progress
+            self.step_count / self.max_episode_length,  # Time progress
+            len(self.joined) / max(1, self.step_count)  # Efficiency ratio
+        ], dtype=np.float32)
         
-        # Join order history features (last 5 joins)
-        history_features = np.zeros(5, dtype=np.float32)
-        for i, rel in enumerate(self.history[-5:]):  # Last 5 joins
-            if i < 5:
-                # Encode the relation name as a simple hash
-                rel_hash = hash(rel) % 1000 / 1000.0  # Normalized hash
-                history_features[i] = rel_hash
+        # 5. Join order history (last 3 joins encoded as one-hot)
+        history_features = np.zeros(self.max_relations, dtype=np.float32)
+        for rel in self.history[-3:]:  # Last 3 joins
+            if rel in self.relation_names:
+                idx = self.relation_names.index(rel)
+                if idx < self.max_relations:
+                    history_features[idx] = 1.0
         
-        # Current join feasibility features
-        feasibility_features = np.zeros(self.max_relations, dtype=np.float32)
-        legal_actions = self.get_legal_actions()
-        for action in legal_actions:
-            if action < self.max_relations:
-                feasibility_features[action] = 1.0
+        # 6. Optimal order guidance (if available)
+        optimal_features = np.zeros(self.max_relations, dtype=np.float32)
+        if hasattr(self.query, 'left_deep_tree_min_order') and self.query.left_deep_tree_min_order:
+            optimal_order = self._parse_optimal_order()
+            for i, rel in enumerate(optimal_order):
+                if rel in self.relation_names:
+                    idx = self.relation_names.index(rel)
+                    if idx < self.max_relations:
+                        # Weight by position in optimal order
+                        optimal_features[idx] = (len(optimal_order) - i) / len(optimal_order)
         
         # Concatenate all features
         state = np.concatenate([
-            joined_vector,           # 20 features
-            log_cardinality,         # 1 feature
-            table_features,          # 60 features (20 * 3)
-            progress,                # 1 feature
-            history_features,        # 5 features
-            feasibility_features     # 20 features
+            joined_vector,           # max_relations features
+            cardinality_features,    # 1 feature
+            table_features,          # max_relations * 4 features
+            progress_features,       # 3 features
+            history_features,        # max_relations features
+            optimal_features         # max_relations features
         ])
         
         return state
@@ -197,18 +218,24 @@ class JoinOrderEnv:
         """Execute one step in the environment"""
         self.step_count += 1
         
-        # Check if episode should end due to max length (exactly 17 steps)
+        # If all relations are already joined, episode is complete
+        if len(self.joined) == self.num_relations:
+            self.done = True
+            return self._get_state(), self._calculate_reward(), True, {"complete": True}
+        
+        # Check if episode should end due to max length
         if self.step_count >= self.max_episode_length:
             self.done = True
-            return self._get_state(), 0.0, True, {"timeout": True}
-        
-        # If all relations are already joined, continue with no-op actions
-        if len(self.joined) == self.num_relations:
-            return self._get_state(), 0.0, False, {"no_op": True}
+            return self._get_state(), self._calculate_reward(), True, {"timeout": True}
         
         # Validate action
         legal_actions = self.get_legal_actions()
+        # If there are no legal actions, end the episode gracefully
+        if not legal_actions:
+            self.done = True
+            return self._get_state(), self._calculate_reward(), True, {"complete": True, "note": "No legal actions remaining"}
         if action not in legal_actions:
+            self.done = True
             return self._get_state(), -1000.0, True, {"error": "Invalid action"}
         
         # Get the relation to join
@@ -224,15 +251,28 @@ class JoinOrderEnv:
             # First relation: use its individual cardinality
             for rel_info in self.query.relations:
                 if rel_info["name"] == relation_to_join:
+                    self.prev_cardinality = self.current_cardinality
                     self.current_cardinality = rel_info["cardinality"]
                     break
         else:
             # Find the cardinality for the current set of joined relations
             new_cardinality = self._get_join_cardinality(list(self.joined))
             if new_cardinality > 0:
+                self.prev_cardinality = self.current_cardinality
                 self.current_cardinality = new_cardinality
         
-        # Episode continues until max_episode_length is reached
+        # If all relations are joined after this action, terminate episode
+        if len(self.joined) == self.num_relations:
+            self.done = True
+            return self._get_state(), self._calculate_reward(), True, {
+                "joined_relation": relation_to_join,
+                "current_cardinality": self.current_cardinality,
+                "num_joined": len(self.joined),
+                "step_count": self.step_count,
+                "complete": True
+            }
+        
+        # Episode continues until completion or max_episode_length is reached
         return self._get_state(), self._calculate_reward(), False, {
             "joined_relation": relation_to_join,
             "current_cardinality": self.current_cardinality,
@@ -241,31 +281,112 @@ class JoinOrderEnv:
         }
     
     def _calculate_reward(self) -> float:
-        """Calculate simplified reward using only base_reward and efficiency_bonus"""
+        """Calculate meaningful reward based on join order quality and progress"""
         if self.reward_mode == "cardinality":
-            # Simplified reward structure using only base_reward and efficiency_bonus
+            # Reward structure that guides learning toward optimal join orders
             
-            # Base reward: negative log cardinality (we want low cardinalities)
-            # Scale down to prevent very negative rewards
-            base_reward = -math.log(max(1, self.current_cardinality)) / 15.0
+            # 1. Progress reward: encourage completing the join order
+            progress_reward = len(self.joined) / self.num_relations * 10.0
             
-            # Efficiency bonus: reward for joining small tables first
+            # 2. Cardinality penalty: penalize high intermediate cardinalities
+            if self.current_cardinality > 0:
+                # Normalize cardinality penalty based on query size
+                max_possible_cardinality = max(r["cardinality"] for r in self.query.relations) * 10
+                cardinality_penalty = -math.log(self.current_cardinality) / math.log(max_possible_cardinality) * 5.0
+            else:
+                cardinality_penalty = 0.0
+            
+            # 3. Efficiency bonus: reward for good join order choices
             efficiency_bonus = 0.0
-            if len(self.joined) == 1:
-                # Find the joined table's cardinality
-                for rel_info in self.query.relations:
-                    if rel_info["name"] in self.joined:
-                        # Reward for starting with small tables
-                        total_cardinality = sum(r["cardinality"] for r in self.query.relations)
-                        efficiency_bonus = (total_cardinality - rel_info["cardinality"]) / total_cardinality * 3.0
-                        break
+            if len(self.joined) > 1:
+                # Check if current join order is following a good pattern
+                # Reward for joining smaller tables first
+                current_relation = self.history[-1] if self.history else None
+                if current_relation:
+                    for rel_info in self.query.relations:
+                        if rel_info["name"] == current_relation:
+                            # Reward for joining smaller tables
+                            avg_cardinality = sum(r["cardinality"] for r in self.query.relations) / len(self.query.relations)
+                            if rel_info["cardinality"] < avg_cardinality:
+                                efficiency_bonus = 2.0
+                            break
+
+            # 3b. Teacher bonus: per-step guidance towards optimal order (if available)
+            teacher_bonus = 0.0
+            optimal_order_for_step = []
+            if hasattr(self.query, 'left_deep_tree_min_order') and self.query.left_deep_tree_min_order:
+                optimal_order_for_step = self._parse_optimal_order()
+                if optimal_order_for_step and self.history:
+                    # If the last joined relation matches the next optimal relation, give a small bonus
+                    step_index = len(self.history) - 1
+                    if step_index < len(optimal_order_for_step):
+                        if self.history[-1] == optimal_order_for_step[step_index]:
+                            teacher_bonus = self.teacher_weight
             
-            total_reward = base_reward + efficiency_bonus
+            # 4. Completion bonus: large reward for completing the join order
+            completion_bonus = 0.0
+            if len(self.joined) == self.num_relations:
+                completion_bonus = 40.0
+                
+                # Additional bonus if the final join order is close to optimal
+                if hasattr(self.query, 'left_deep_tree_min_order') and self.query.left_deep_tree_min_order:
+                    optimal_order = self._parse_optimal_order()
+                    if optimal_order:
+                        accuracy = self._calculate_order_accuracy(optimal_order, self.history)
+                        completion_bonus += accuracy * 80.0  # Up to 80 additional points for perfect accuracy
+            
+            # 5. Step penalty: small penalty for each step to encourage efficiency
+            step_penalty = -0.1 * self.step_count
+            
+            total_reward = (
+                progress_reward
+                + cardinality_penalty
+                + efficiency_bonus
+                + teacher_bonus
+                + completion_bonus
+                + step_penalty
+            )
             
             return total_reward
         
         # Fallback reward mode
         return 0.0
+    
+    def _parse_optimal_order(self) -> List[str]:
+        """Parse the optimal join order from ground truth"""
+        if not hasattr(self.query, 'left_deep_tree_min_order') or not self.query.left_deep_tree_min_order:
+            return []
+        
+        order_str = self.query.left_deep_tree_min_order
+        # Remove parentheses and 'join' keywords
+        cleaned = order_str.replace('(', '').replace(')', '').replace(' join ', ' ')
+        table_names = cleaned.split()
+        
+        # Extract unique tables in order
+        seen = set()
+        unique_tables = []
+        for table in table_names:
+            if table not in seen:
+                seen.add(table)
+                unique_tables.append(table)
+        
+        return unique_tables
+    
+    def _calculate_order_accuracy(self, optimal_order: List[str], agent_order: List[str]) -> float:
+        """Calculate accuracy of join order prediction"""
+        if not optimal_order or not agent_order:
+            return 0.0
+        
+        # Calculate position-based accuracy
+        correct_positions = 0
+        min_length = min(len(optimal_order), len(agent_order))
+        
+        for i in range(min_length):
+            if i < len(optimal_order) and i < len(agent_order):
+                if optimal_order[i] == agent_order[i]:
+                    correct_positions += 1
+        
+        return correct_positions / len(optimal_order) if optimal_order else 0.0
     
     def get_action_mask(self) -> np.ndarray:
         """Get binary mask for valid actions (padded to max_relations)"""
@@ -275,9 +396,3 @@ class JoinOrderEnv:
             if action < self.max_relations:
                 mask[action] = 1.0
         return mask
-    
-    def get_optimal_cost(self) -> float:
-        """Get the optimal cost for this query"""
-        # This would need to be implemented based on your optimal solution data
-        # For now, return a placeholder
-        return 0.0
